@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Bomba İmha Simülasyonu - PDR Kriz Müdahalesi</title>
+<style>
+  :root {
+    --bg-color: #111;
+    --text-color: #fff;
+    --bomb-bg: linear-gradient(145deg, #333, #1a1a1a);
+    --bomb-border: #444;
+    --accent: #ff3333;
+    --display-bg: #000;
+    --wire-panel: #222;
+    --btn-bg: #444;
+    --success: #0f0;
+  }
+  [data-theme="light"] {
+    --bg-color: #f0f0f0;
+    --text-color: #111;
+    --bomb-bg: linear-gradient(145deg, #e6e6e6, #ffffff);
+    --bomb-border: #ccc;
+    --accent: #d90000;
+    --display-bg: #eaecf0;
+    --wire-panel: #dcdcdc;
+    --btn-bg: #ddd;
+    --success: #00aa00;
+  }
+  * { box-sizing: border-box; font-family: 'Courier New', monospace; user-select: none; }
+  body { margin: 0; padding: 0; background: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; transition: background 0.3s; }
+  
+  /* Theme Toggle */
+  #theme-toggle { position: absolute; top: 15px; right: 15px; background: var(--btn-bg); color: var(--text-color); border: 1px solid var(--bomb-border); padding: 8px 15px; border-radius: 20px; cursor: pointer; z-index: 10000; font-weight: bold; }
+  
+  /* Intro Screen (Fix for Google Sites & Auto-start) */
+  #intro-screen { position: fixed; inset: 0; background: var(--bg-color); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+  #intro-screen h1 { color: var(--accent); margin-bottom: 20px; font-size: 2rem; }
+  #intro-screen p { max-width: 400px; font-size: 1.1rem; line-height: 1.5; margin-bottom: 30px; color: var(--text-color); }
+  .btn-main { padding: 15px 40px; font-size: 1.3rem; font-weight: bold; background: var(--accent); color: #fff; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 15px rgba(255, 0, 0, 0.4); }
+  .btn-main:active { transform: scale(0.95); }
+
+  .scene { width: 95%; max-width: 400px; height: 65vh; min-height: 600px; perspective: 1000px; margin-top: 20px; }
+  .card { width: 100%; height: 100%; position: relative; transition: transform 0.6s; transform-style: preserve-3d; }
+  .card.is-flipped { transform: rotateY(180deg); }
+  .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; background: var(--bomb-bg); border: 3px solid var(--bomb-border); border-radius: 15px; padding: 15px; display: flex; flex-direction: column; box-shadow: inset 0 0 20px rgba(0,0,0,0.5), 0 10px 30px rgba(0,0,0,0.5); }
+  .card-back { transform: rotateY(180deg); justify-content: center; align-items: center; }
+
+  /* Bomb Components */
+  .timer-display { background: var(--display-bg); color: var(--accent); font-size: 2.5rem; text-align: center; padding: 10px; border-radius: 5px; font-weight: bold; margin-bottom: 10px; text-shadow: 0 0 10px var(--accent); letter-spacing: 2px; }
+  
+  .digital-screen { background: var(--display-bg); height: 50px; border-radius: 5px; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; border: 2px inset var(--bomb-border); gap: 10px; padding: 5px; }
+  .color-box { width: 30px; height: 30px; border-radius: 3px; box-shadow: 0 0 10px rgba(255,255,255,0.2); }
+  
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 15px; flex-shrink: 0; }
+  .key { background: var(--btn-bg); color: var(--text-color); border: 2px solid var(--bomb-border); border-radius: 5px; padding: 10px 0; font-size: 1.2rem; font-weight: bold; cursor: pointer; box-shadow: 0 4px 0 #111; text-align: center; }
+  .key:active { transform: translateY(4px); box-shadow: 0 0 0 #111; }
+  .key.disabled { opacity: 0.3; pointer-events: none; }
+
+  .wire-panel { background: var(--wire-panel); flex-grow: 1; border-radius: 5px; border: 2px inset var(--bomb-border); padding: 10px; display: flex; flex-direction: row; justify-content: space-around; align-items: center; min-height: 150px; }
+  .wire-col { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; flex: 1; }
+  .wire { width: 40px; height: 120px; border-radius: 6px; cursor: pointer; box-shadow: inset -3px 0 rgba(0,0,0,0.3); position: relative; transition: opacity 0.2s; }
+  .wire.cut { opacity: 0.7; }
+  .wire.cut::after { content: ''; position: absolute; left: -5px; top: 50%; width: calc(100% + 10px); height: 8px; background: var(--wire-panel); transform: translateY(-50%); box-shadow: inset 0 2px 4px rgba(0,0,0,0.5); }
+  
+  .flip-btn { margin-top: 15px; padding: 15px; font-size: 1.1rem; font-weight: bold; background: #555; color: white; border: none; border-radius: 5px; cursor: pointer; text-align: center; width: 100%; box-shadow: 0 4px 0 #222; }
+  .flip-btn:active { transform: translateY(4px); box-shadow: none; }
+
+  .post-it { background: #f4d03f; color: #111; padding: 20px; font-size: 2rem; font-weight: bold; transform: rotate(-5deg); box-shadow: 2px 2px 10px rgba(0,0,0,0.5); text-align: center; }
+
+  /* Breathing Screen Layout Fix */
+  #breath-screen { position: fixed; inset: 0; background: var(--bg-color); z-index: 99998; display: none; flex-direction: column; justify-content: space-between; align-items: center; padding: 40px 20px; }
+  .breath-header { text-align: center; width: 100%; min-height: 80px; z-index: 2; }
+  .breath-title { font-size: 1.2rem; color: #888; margin-bottom: 10px; }
+  .breath-instruction { font-size: 2rem; color: var(--success); font-weight: bold; min-height: 40px; letter-spacing: 2px; }
+  .breath-circle-wrapper { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 250px; z-index: 1; }
+  .breath-circle { width: 80px; height: 80px; border-radius: 50%; background: rgba(0, 255, 0, 0.1); border: 4px solid var(--success); transition: transform linear; box-shadow: 0 0 30px rgba(0, 255, 0, 0.4); }
+  .breath-footer { width: 100%; min-height: 80px; display: flex; align-items: center; justify-content: center; z-index: 2; }
+  #btn-ready { background: var(--success); color: #000; display: none; margin: 0; }
+
+  /* Game Over Screen */
+  #game-over-screen { position: fixed; inset: 0; background: rgba(255,0,0,0.9); z-index: 100000; display: none; flex-direction: column; align-items: center; justify-content: center; color: white; text-align: center; }
+  
+  /* Shake animation */
+  .shake { animation: shake 0.2s infinite; }
+  @keyframes shake { 0% { transform: translate(2px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 30% { transform: translate(0px, 2px) rotate(0deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 70% { transform: translate(2px, 1px) rotate(-1deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } 90% { transform: translate(2px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } }
+</style>
+</head>
+<body>
+
+<button id="theme-toggle">☀️ AYDINLIK</button>
+
+<div id="intro-screen">
+  <h1>KOD: OVR-RİSK</h1>
+  <p>Bu simülasyon aşırı dikkat ve hız gerektirir.<br><br>1. Bombayı çevir, şifreyi ezberle.<br>2. Şifreyi tuş takımına hatasız gir.<br>3. Dijital ekranda beliren renk sırasına göre kabloları kes.<br><br>Yanlış şifre sürenden 3 saniye çalar. Yanlış kablo anında patlatır.</p>
+  <button id="btn-start" class="btn-main">SİSTEMİ BAŞLAT</button>
+</div>
+
+<div id="game-over-screen">
+  <h1 style="font-size: 3rem; margin-bottom: 10px;">PATLADI!</h1>
+  <p id="game-over-reason" style="font-size: 1.2rem; margin-bottom: 30px;"></p>
+  <button id="btn-retry" class="btn-main" style="background: white; color: red;">YENİDEN DENE</button>
+</div>
+
+<div id="breath-screen">
+  <div class="breath-header">
+    <div id="breath-instruction" class="breath-instruction"></div>
+  </div>
+  <div class="breath-circle-wrapper">
+    <div id="breath-circle" class="breath-circle"></div>
+  </div>
+  <div class="breath-footer" style="flex-direction: column;">
+    <div class="breath-title" style="margin-bottom: 20px;">Sakin ol. Sadece çembere odaklan, hepsi bu.</div>
+    <button id="btn-ready" class="btn-main">HAZIRIM (SONRAKİ SEVİYE)</button>
+  </div>
+</div>
+
+<div class="scene" id="game-scene" style="display:none;">
+  <div class="card" id="bomb-card">
+    <div class="card-front card-face">
+      <div class="timer-display" id="timer">00:00</div>
+      
+      <div class="digital-screen" id="digital-screen">
+        <span style="color: #666; font-size:0.9rem;">[KOD BEKLENİYOR]</span>
+      </div>
+      
+      <div class="keypad" id="keypad">
+        <div class="key" data-val="1">1</div><div class="key" data-val="2">2</div><div class="key" data-val="3">3</div>
+        <div class="key" data-val="4">4</div><div class="key" data-val="5">5</div><div class="key" data-val="6">6</div>
+        <div class="key" data-val="7">7</div><div class="key" data-val="8">8</div><div class="key" data-val="9">9</div>
+        <div class="key" style="background: var(--accent); color: white;" data-val="DEL">SIL</div>
+        <div class="key" data-val="0">0</div>
+        <div class="key" style="background: var(--success); color: white;" data-val="OK">OK</div>
+      </div>
+      
+      <div class="wire-panel" id="wire-panel"></div>
+      
+      <button class="flip-btn" id="btn-flip-back">BOMBAYI ÇEVİR ↻</button>
+    </div>
+    <div class="card-back card-face">
+      <div class="post-it">
+        <div style="font-size: 1rem; color: #555;">OVR-CODE</div>
+        <div id="secret-code">123-456</div>
+      </div>
+      <button class="flip-btn" id="btn-flip-front" style="margin-top: 40px; position:absolute; bottom: 20px; width: calc(100% - 30px);">ÖN YÜZE DÖN ↺</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let theme = 'dark';
+  document.getElementById('theme-toggle').addEventListener('click', (e) => {
+    theme = theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    e.target.innerText = theme === 'dark' ? '☀️ AYDINLIK' : '🌙 KARANLIK';
+  });
+
+  // DOM Elements
+  const elIntro = document.getElementById('intro-screen');
+  const elScene = document.getElementById('game-scene');
+  const elGameOver = document.getElementById('game-over-screen');
+  const elBreathScreen = document.getElementById('breath-screen');
+  const elTimer = document.getElementById('timer');
+  const digitalScreen = document.getElementById('digital-screen');
+  const wirePanel = document.getElementById('wire-panel');
+  const keys = document.querySelectorAll('.key');
+  const bombCard = document.getElementById('bomb-card');
+  const elSecretCode = document.getElementById('secret-code');
+  const elGameOverReason = document.getElementById('game-over-reason');
+  const elBreathInstruction = document.getElementById('breath-instruction');
+
+  // Audio Context
+  let audioCtx;
+  let beepOsc, beepInterval;
+
+  function initAudio() {
+    if(!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function playTone(freq, type, duration, vol=0.1) {
+    if(!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+  }
+
+  // Game State
+  let level = 1;
+  let isPlaying = false;
+  let timeLeft = 0;
+  let timerId = null;
+  
+  let targetCode = "";
+  let currentInput = "";
+  let isCodeBroken = false;
+  
+  const allColors = [
+    {id: 'red', hex: '#ff3333'}, {id: 'blue', hex: '#3366ff'},
+    {id: 'yellow', hex: '#ffcc00'}, {id: 'green', hex: '#33cc33'},
+    {id: 'purple', hex: '#cc33cc'}
+  ];
+  let wireSequence = [];
+  let currentWireTargetIndex = 0;
+
+  // Listeners
+  document.getElementById('btn-start').addEventListener('click', () => {
+    initAudio();
+    elIntro.style.display = 'none';
+    elScene.style.display = 'block';
+    startLevel(1);
+  });
+
+  document.getElementById('btn-retry').addEventListener('click', () => {
+    elGameOver.style.display = 'none';
+    startLevel(1);
+  });
+
+  document.getElementById('btn-flip-back').addEventListener('click', () => bombCard.classList.add('is-flipped'));
+  document.getElementById('btn-flip-front').addEventListener('click', () => bombCard.classList.remove('is-flipped'));
+
+  keys.forEach(k => {
+    k.addEventListener('click', () => {
+      if(isCodeBroken || k.classList.contains('disabled')) return;
+      playTone(800, 'sine', 0.1);
+      const val = k.dataset.val;
+      if(val === 'DEL') {
+        currentInput = "";
+        updateDigitalScreenInput();
+      } else if (val === 'OK') {
+        checkCode();
+      } else {
+        if(currentInput.length < 6) currentInput += val;
+        updateDigitalScreenInput();
+      }
+    });
+  });
+
+  function startLevel(lvl) {
+    level = lvl;
+    isPlaying = true;
+    isCodeBroken = false;
+    currentInput = "";
+    currentWireTargetIndex = 0;
+    bombCard.classList.remove('is-flipped');
+    
+    // Time logic
+    let wireCount = Math.min(3 + Math.floor(level/2), 5);
+    let baseTime = Math.max(25 - (level * 2), 5); // Start at 23s, drop down to 5s
+    timeLeft = baseTime * 1000; 
+
+    // Generate Code
+    let part1 = Math.floor(100 + Math.random() * 899);
+    let part2 = Math.floor(100 + Math.random() * 899);
+    targetCode = `${part1}${part2}`;
+    elSecretCode.innerText = `${part1}-${part2}`;
+
+    // Wires
+    wireSequence = [];
+    let available = [...allColors];
+    for(let i=0; i<wireCount; i++){
+       let r = Math.floor(Math.random() * available.length);
+       wireSequence.push(available[r]);
+       available.splice(r, 1);
+    }
+    
+    renderWires(wireSequence);
+    
+    keys.forEach(k => k.classList.remove('disabled'));
+    digitalScreen.innerHTML = `<span style="color:#aaa; letter-spacing:3px;">_ _ _ _ _ _</span>`;
+    
+    lastTime = performance.now();
+    cancelAnimationFrame(timerId);
+    timerId = requestAnimationFrame(updateTimer);
+  }
+
+  let lastTime = 0;
+  function updateTimer(timestamp) {
+    if(!isPlaying) return;
+    let dt = timestamp - lastTime;
+    lastTime = timestamp;
+    timeLeft -= dt;
+
+    if(timeLeft <= 0) {
+      explode("ZAMAN DOLDU!");
+      return;
+    }
+
+    let secs = Math.floor(timeLeft / 1000);
+    let ms = Math.floor((timeLeft % 1000) / 10);
+    elTimer.innerText = `${secs.toString().padStart(2,'0')}:${ms.toString().padStart(2,'0')}`;
+
+    // Audio Stress
+    if(timeLeft < 5000) {
+       document.body.classList.add('shake');
+       if(!beepInterval) {
+           beepInterval = setInterval(() => playTone(900, 'square', 0.1, 0.3), 300);
+       }
+    } else {
+       document.body.classList.remove('shake');
+       clearInterval(beepInterval);
+       beepInterval = null;
+    }
+
+    timerId = requestAnimationFrame(updateTimer);
+  }
+
+  function updateDigitalScreenInput() {
+    let display = currentInput.padEnd(6, '_').split('').join(' ');
+    digitalScreen.innerHTML = `<span style="color:var(--text-color); font-weight:bold; letter-spacing:3px;">${display}</span>`;
+  }
+
+  function checkCode() {
+    if(currentInput === targetCode) {
+      isCodeBroken = true;
+      playTone(1200, 'sine', 0.2);
+      
+      // Disable only the number keypad, not the screen
+      keys.forEach(k => k.classList.add('disabled'));
+      
+      // Show wire sequence on screen
+      digitalScreen.innerHTML = "";
+      wireSequence.forEach(w => {
+         let box = document.createElement('div');
+         box.className = 'color-box';
+         box.style.backgroundColor = w.hex;
+         digitalScreen.appendChild(box);
+      });
+    } else {
+      // Penalty
+      playTone(150, 'sawtooth', 0.4);
+      timeLeft -= 3000; // minus 3 seconds
+      currentInput = "";
+      updateDigitalScreenInput();
+      
+      elTimer.style.color = 'red';
+      setTimeout(() => elTimer.style.color = 'var(--accent)', 300);
+    }
+  }
+
+  function renderWires(sequence) {
+    wirePanel.innerHTML = "";
+    // Randomize physical placement so they don't match the display sequence exactly
+    let shuffled = [...sequence].sort(() => Math.random() - 0.5);
+    
+    shuffled.forEach(w => {
+      let col = document.createElement('div');
+      col.className = 'wire-col';
+      
+      let socketTop = document.createElement('div');
+      socketTop.style.width = '20px'; socketTop.style.height='12px'; socketTop.style.background='#000'; socketTop.style.borderRadius='3px 3px 0 0';
+      
+      let socketBottom = document.createElement('div');
+      socketBottom.style.width = '20px'; socketBottom.style.height='12px'; socketBottom.style.background='#000'; socketBottom.style.borderRadius='0 0 3px 3px';
+      
+      let wire = document.createElement('div');
+      wire.className = 'wire';
+      wire.style.backgroundColor = w.hex;
+      wire.dataset.colorId = w.id;
+      
+      wire.addEventListener('click', () => cutWire(wire, w.id));
+
+      col.appendChild(socketTop);
+      col.appendChild(wire);
+      col.appendChild(socketBottom);
+      wirePanel.appendChild(col);
+    });
+  }
+
+  function cutWire(wireEl, colorId) {
+    if(!isCodeBroken || wireEl.classList.contains('cut') || !isPlaying) return;
+    
+    wireEl.classList.add('cut');
+    
+    if(colorId === wireSequence[currentWireTargetIndex].id) {
+       playTone(1000, 'sine', 0.1);
+       currentWireTargetIndex++;
+       
+       if(currentWireTargetIndex === wireSequence.length) {
+          defused();
+       }
+    } else {
+       explode("YANLIŞ KABLO KESİLDİ!");
+    }
+  }
+
+  function explode(reason) {
+    isPlaying = false;
+    clearInterval(beepInterval);
+    beepInterval = null;
+    document.body.classList.remove('shake');
+    playTone(100, 'square', 1.5, 0.5);
+    
+    elGameOverReason.innerText = reason;
+    elGameOver.style.display = 'flex';
+  }
+
+  function defused() {
+    isPlaying = false;
+    clearInterval(beepInterval);
+    beepInterval = null;
+    document.body.classList.remove('shake');
+    elTimer.innerText = "00:00";
+    elTimer.style.color = "var(--success)";
+    playTone(600, 'sine', 0.5, 0.2);
+    
+    setTimeout(() => {
+       startBreathing();
+    }, 1000);
+  }
+
+  // Breathing Mechanic
+  function startBreathing() {
+    elScene.style.display = 'none';
+    elBreathScreen.style.display = 'flex';
+    document.getElementById('btn-ready').style.display = 'none';
+    
+    const circle = document.getElementById('breath-circle');
+    let cycleCount = 0;
+    
+    function breathCycle() {
+      // Inhale 4s
+      elBreathInstruction.innerText = "NEFES AL...";
+      circle.style.transition = "transform 4s ease-in-out";
+      circle.style.transform = "scale(2.5)";
+      
+      setTimeout(() => {
+        // Hold 2.5s
+        elBreathInstruction.innerText = "TUT...";
+        
+        setTimeout(() => {
+          // Exhale 5s
+          elBreathInstruction.innerText = "YAVAŞÇA VER...";
+          circle.style.transition = "transform 5s ease-in-out";
+          circle.style.transform = "scale(1)";
+          
+          setTimeout(() => {
+            cycleCount++;
+            if(cycleCount >= 2) {
+               document.getElementById('btn-ready').style.display = 'block';
+            }
+            if(elBreathScreen.style.display === 'flex') {
+               breathCycle();
+            }
+          }, 5000); // 5s exhale delay
+        }, 2500); // 2.5s hold delay
+      }, 4000); // 4s inhale delay
+    }
+    
+    // Start first cycle immediately
+    setTimeout(() => { breathCycle(); }, 500);
+  }
+
+  document.getElementById('btn-ready').addEventListener('click', () => {
+    elBreathScreen.style.display = 'none';
+    elScene.style.display = 'block';
+    elTimer.style.color = "var(--accent)";
+    startLevel(level + 1);
+  });
+
+</script>
+</body>
+</html>
